@@ -4,12 +4,12 @@ param tags object = {}
 
 param appUser string = 'appUser'
 param databaseName string
-param keyVaultName string
 param sqlAdmin string = 'sqlAdmin'
 param connectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
 @secure()
 param sqlAdminPassword string
+
 @secure()
 param appUserPassword string
 
@@ -31,11 +31,9 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   }
 
   resource firewall 'firewallRules' = {
-    name: 'Azure Services'
+    name: 'AzureServices'
     properties: {
-      // Allow all clients
-      // Note: range [0.0.0.0-0.0.0.0] means "allow all Azure-hosted clients only".
-      // This is not sufficient, because we also want to allow direct access from developer machine, for debugging purposes.
+      // Allow all Azure-hosted clients and external IPs for debugging
       startIpAddress: '0.0.0.1'
       endIpAddress: '255.255.255.254'
     }
@@ -48,8 +46,8 @@ resource sqlDeploymentScript 'Microsoft.Resources/deploymentScripts@2020-10-01' 
   kind: 'AzureCLI'
   properties: {
     azCliVersion: '2.37.0'
-    retentionInterval: 'PT1H' // Retain the script resource for 1 hour after it ends running
-    timeout: 'PT5M' // Five minutes
+    retentionInterval: 'PT1H'
+    timeout: 'PT5M'
     cleanupPreference: 'OnSuccess'
     environmentVariables: [
       {
@@ -96,34 +94,8 @@ SCRIPT_END
   }
 }
 
-resource sqlAdminPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = {
-  parent: keyVault
-  name: 'sqlAdminPassword'
-  properties: {
-    value: sqlAdminPassword
-  }
-}
+var connectionString = 'Server=${sqlServer.properties.fullyQualifiedDomainName}; Database=${sqlServer::database.name}; User=${appUser}; Password=${appUserPassword}'
 
-resource appUserPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = {
-  parent: keyVault
-  name: 'appUserPassword'
-  properties: {
-    value: appUserPassword
-  }
-}
-
-resource sqlAzureConnectionStringSercret 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = {
-  parent: keyVault
-  name: connectionStringKey
-  properties: {
-    value: '${connectionString}; Password=${appUserPassword}'
-  }
-}
-
-resource keyVault 'Microsoft.KeyVault/vaults@2022-07-01' existing = {
-  name: keyVaultName
-}
-
-var connectionString = 'Server=${sqlServer.properties.fullyQualifiedDomainName}; Database=${sqlServer::database.name}; User=${appUser}'
 output connectionStringKey string = connectionStringKey
 output databaseName string = sqlServer::database.name
+output connectionString string = connectionString
