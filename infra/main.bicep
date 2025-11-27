@@ -35,7 +35,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   tags: tags
 }
 
-// The application frontend (Web App only, sem App Service Plan e Key Vault)
+// The application frontend (Web App only)
 module web './core/host/appservice.bicep' = {
   name: 'web'
   scope: rg
@@ -92,3 +92,5 @@ output AZURE_SQL_IDENTITY_DATABASE_NAME string = identityDb.outputs.databaseName
 // App outputs
 output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
+output AZURE_WEBAPP_NAME string = web.outputs.name
+output AZURE_WEBAPP_URI string = web.outputs.uri
