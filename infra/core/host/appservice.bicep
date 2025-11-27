@@ -2,19 +2,13 @@ param name string
 param location string = resourceGroup().location
 param tags object = {}
 
-// Reference Properties
-param applicationInsightsName string = ''
-param appServicePlanId string
-param keyVaultName string = ''
-param managedIdentity bool = !empty(keyVaultName)
-
 // Runtime Properties
 @allowed([
   'dotnet', 'dotnetcore', 'dotnet-isolated', 'node', 'python', 'java', 'powershell', 'custom'
 ])
 param runtimeName string
-param runtimeNameAndVersion string = '${runtimeName}|${runtimeVersion}'
 param runtimeVersion string
+param runtimeNameAndVersion string = '${runtimeName}|${runtimeVersion}'
 
 // Microsoft.Web/sites Properties
 param kind string = 'app,linux'
@@ -41,7 +35,6 @@ resource appService 'Microsoft.Web/sites@2022-03-01' = {
   tags: tags
   kind: kind
   properties: {
-    serverFarmId: appServicePlanId
     siteConfig: {
       linuxFxVersion: linuxFxVersion
       alwaysOn: alwaysOn
@@ -56,46 +49,25 @@ resource appService 'Microsoft.Web/sites@2022-03-01' = {
       cors: {
         allowedOrigins: union([ 'https://portal.azure.com', 'https://ms.portal.azure.com' ], allowedOrigins)
       }
+      appSettings: [
+        for setting in appSettings: {
+          name: setting.key
+          value: setting.value
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: string(scmDoBuildDuringDeployment)
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: string(enableOryxBuild)
+        }
+      ]
     }
     clientAffinityEnabled: clientAffinityEnabled
     httpsOnly: true
   }
-
-  identity: { type: managedIdentity ? 'SystemAssigned' : 'None' }
-
-  resource configAppSettings 'config' = {
-    name: 'appsettings'
-    properties: union(appSettings,
-      {
-        SCM_DO_BUILD_DURING_DEPLOYMENT: string(scmDoBuildDuringDeployment)
-        ENABLE_ORYX_BUILD: string(enableOryxBuild)
-      },
-      !empty(applicationInsightsName) ? { APPLICATIONINSIGHTS_CONNECTION_STRING: applicationInsights.properties.ConnectionString } : {},
-      !empty(keyVaultName) ? { AZURE_KEY_VAULT_ENDPOINT: keyVault.properties.vaultUri } : {})
-  }
-
-  resource configLogs 'config' = {
-    name: 'logs'
-    properties: {
-      applicationLogs: { fileSystem: { level: 'Verbose' } }
-      detailedErrorMessages: { enabled: true }
-      failedRequestsTracing: { enabled: true }
-      httpLogs: { fileSystem: { enabled: true, retentionInDays: 1, retentionInMb: 35 } }
-    }
-    dependsOn: [
-      configAppSettings
-    ]
-  }
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2022-07-01' existing = if (!(empty(keyVaultName))) {
-  name: keyVaultName
-}
-
-resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing = if (!empty(applicationInsightsName)) {
-  name: applicationInsightsName
-}
-
-output identityPrincipalId string = managedIdentity ? appService.identity.principalId : ''
 output name string = appService.name
 output uri string = 'https://${appService.properties.defaultHostName}'
